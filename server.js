@@ -2,12 +2,13 @@ require('dotenv').config();
 const express=require('express'),fs=require('fs'),path=require('path'),crypto=require('crypto'),webpush=require('web-push'),cron=require('node-cron');
 const {google}=require('googleapis');
 const app=express();app.use(express.json({limit:'128kb'}));app.use(express.static(path.join(__dirname,'public')));
-const file=path.join(__dirname,'state.json');let state={subscriptions:[],reminders:{},sent:{}};
+const file=process.env.STATE_PATH||path.join(__dirname,'state.json');let state={subscriptions:[],reminders:{},sent:{}};
 if(fs.existsSync(file))try{state=JSON.parse(fs.readFileSync(file,'utf8'))}catch{}
 function save(){const tmp=file+'.tmp';fs.writeFileSync(tmp,JSON.stringify(state,null,2),{mode:0o600});fs.renameSync(tmp,file)}
 const admin=(req,res,next)=>{const supplied=req.get('x-admin-password')||'';const expected=process.env.ADMIN_PASSWORD||'';if(!expected||Buffer.byteLength(supplied)!==Buffer.byteLength(expected)||!crypto.timingSafeEqual(Buffer.from(supplied),Buffer.from(expected)))return res.status(401).json({error:'غير مصرح'});next()};
 const ready=!!(process.env.VAPID_PUBLIC_KEY&&process.env.VAPID_PRIVATE_KEY&&process.env.VAPID_EMAIL);
 if(ready)webpush.setVapidDetails(process.env.VAPID_EMAIL,process.env.VAPID_PUBLIC_KEY,process.env.VAPID_PRIVATE_KEY);
+app.get('/api/health',(req,res)=>res.json({ok:true}));
 app.get('/api/config',(req,res)=>res.json({vapidPublicKey:process.env.VAPID_PUBLIC_KEY||'',pushReady:ready}));
 app.post('/api/subscribe',(req,res)=>{const {subscription,label}=req.body||{};if(!subscription?.endpoint||!subscription.keys?.p256dh||!subscription.keys?.auth)return res.status(400).json({error:'اشتراك غير صالح'});state.subscriptions=state.subscriptions.filter(s=>s.subscription.endpoint!==subscription.endpoint);state.subscriptions.push({subscription,label:String(label||'جهاز').slice(0,40)});save();res.json({ok:true})});
 async function appointments(){const raw=process.env.GOOGLE_SERVICE_ACCOUNT_JSON;if(!raw)throw Error('حساب خدمة Google غير مهيأ');const credentials=JSON.parse(raw);const auth=new google.auth.GoogleAuth({credentials,scopes:['https://www.googleapis.com/auth/spreadsheets.readonly']});const sheets=google.sheets({version:'v4',auth});const tab=(process.env.GOOGLE_SHEET_TAB||'المواعيد').replace(/'/g,"''");const r=await sheets.spreadsheets.values.get({spreadsheetId:process.env.GOOGLE_SHEET_ID,range:`'${tab}'!A1:Z2000`,valueRenderOption:'FORMATTED_VALUE'});const [headers=[],...rows]=r.data.values||[];return rows.map(row=>({id:crypto.createHash('sha256').update(JSON.stringify([row[0]||'',row[1]||'',row[3]||''])).digest('hex').slice(0,20),...Object.fromEntries(headers.map((h,i)=>[h,row[i]||'']))})).filter(x=>Object.keys(x).some(k=>k!=='id'&&x[k]))}
