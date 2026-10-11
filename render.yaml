@@ -2,22 +2,14 @@ services:
   - type: web
     name: mwaeedi-push
     runtime: node
-    plan: starter
+    plan: free
     region: frankfurt
     buildCommand: npm install
     startCommand: npm start
     healthCheckPath: /api/health
-    disk:
-      name: mwaeedi-state
-      mountPath: /var/data
-      sizeGB: 1
     envVars:
       - key: NODE_ENV
         value: production
-      - key: PORT
-        value: 10000
-      - key: STATE_PATH
-        value: /var/data/state.json
       - key: GOOGLE_SHEET_ID
         value: 1usNtOoYmfjHoj3EHtLVAKJi8_N_DmA7A-_AT-u3hfNA
       - key: GOOGLE_SHEET_TAB
